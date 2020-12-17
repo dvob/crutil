@@ -1,4 +1,4 @@
-module github.com/dsbrng25b/crutil
+module github.com/dvob/crutil
 
 go 1.15
 

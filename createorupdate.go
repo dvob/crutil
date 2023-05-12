@@ -8,7 +8,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,24 +42,23 @@ type Object interface {
 	runtime.Object
 }
 
-func mutate(f util.MutateFn, key client.ObjectKey, obj Object) error {
+// also copied from controllerutil package
+func mutate(f util.MutateFn, key client.ObjectKey, obj client.Object) error {
 	if err := f(); err != nil {
 		return err
 	}
-	if newKey, err := client.ObjectKeyFromObject(obj); err != nil || key != newKey {
+	if newKey := client.ObjectKeyFromObject(obj); key != newKey {
 		return fmt.Errorf("MutateFn cannot mutate object name and/or object namespace")
 	}
 	return nil
 }
 
-func CreateOrUpdate(ctx context.Context, c client.Client, obj Object, f util.MutateFn) (util.OperationResult, error) {
-	key, err := client.ObjectKeyFromObject(obj)
-	if err != nil {
-		return util.OperationResultNone, err
-	}
+var _ = util.CreateOrUpdate
 
+func CreateOrUpdate(ctx context.Context, c client.Client, obj client.Object, f util.MutateFn) (util.OperationResult, error) {
+	key := client.ObjectKeyFromObject(obj)
 	if err := c.Get(ctx, key, obj); err != nil {
-		if !errors.IsNotFound(err) {
+		if !apierrors.IsNotFound(err) {
 			return util.OperationResultNone, err
 		}
 		if err := mutate(f, key, obj); err != nil {
@@ -83,8 +82,6 @@ func CreateOrUpdate(ctx context.Context, c client.Client, obj Object, f util.Mut
 	if err := c.Update(ctx, obj); err != nil {
 		return util.OperationResultNone, err
 	}
-
 	fmt.Println(jsonDiff(existing, obj))
-
 	return util.OperationResultUpdated, nil
 }
